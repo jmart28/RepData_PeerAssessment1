@@ -1,0 +1,151 @@
+---
+title: "Reproducible Research: Peer Assessment 1"
+author: "Jaclyn Martin"
+output: 
+  html_document:
+    keep_md: true
+    toc: true
+    toc_float: true
+---
+
+
+## Loading and preprocessing the data
+Code for reading in the dataset and/or processing the data
+```{r}
+data <- read.csv("C:/Users/jaclyn.martin/Documents/GitHub/RepData_PeerAssessment1/activity.csv")
+head(data)
+summary(data)
+data$date <- as.Date(data$date)
+head(data)
+
+```
+
+## What is mean total number of steps taken per day?
+Histogram of the total number of steps taken each day
+```{r}
+library(ggplot2)
+#plot
+ggplot(data,aes(date,steps))+geom_col()
+```
+
+Mean and median number of steps taken each day
+```{r}
+#steps per day calc
+totalsteps <- tapply(data$steps, data$date, FUN = sum)
+steps_day <- as.data.frame(totalsteps)
+head(steps_day)
+library(tibble)
+steps_day <-rownames_to_column(steps_day,var = "date")
+head(steps_day)
+steps_day$date <- as.Date(steps_day$date)
+
+summary(steps_day$totalsteps)
+mean_steps <- round(mean(steps_day$totalsteps,na.rm = TRUE), digits = 2)
+mean_steps
+med_steps <- median(steps_day$totalsteps,na.rm = TRUE)
+med_steps
+```
+The mean total number of steps taken per day is `r mean_steps` and the median is `r med_steps`. 
+
+## What is the average daily activity pattern?
+
+Time series plot of the average number of steps taken
+```{r}
+#ggplot(data, aes(x=interval, y=steps)) + geom_line()
+
+#avg steps per interval
+intervallevel <- aggregate(steps~interval, data = data, FUN = function(data) c(mean=mean(data)))
+
+summary(intervallevel)
+
+ggplot(intervallevel, aes(interval,steps))+ geom_line()
+```
+
+Which 5-minute interval, on average across all the days in the dataset, contains the maximum number of steps?
+
+```{r}
+maxint <- intervallevel$interval[which.max(intervallevel$steps)]
+maxint
+```
+
+`r maxint` is the interval that contains the maximum number of steps, on average across all the days in the dataset. 
+
+## Imputing missing values
+Code to describe and show a strategy for imputing missing data
+
+Calculate and report the total number of missing values in the dataset (i.e. the total number of rows with NAs 
+```{r}
+library(mice)
+#This shows how many observations have missing values. 
+md.pattern(data, plot = FALSE)
+```
+There are 15264 observations with no missing values and 2304 observations that are missing only the steps value. 
+
+```{r}
+library(VIM)
+#Graphical representation of the missing values.
+mice_plot <- aggr(data, col=c('navyblue','yellow'),
+                    numbers=TRUE, sortVars=TRUE,
+                    labels=names(data), cex.axis=.7,
+                    gap=3, ylab=c("Missing data","Pattern"))
+#impute missing data using predictive mean matching
+imputed_Data <- mice(data, m=5)
+summary(imputed_Data)
+#Create a new dataset that is equal to the original dataset but with the missing data filled in.
+completeData <- complete(imputed_Data,2)
+```
+This shows that all the missing data is in the steps variable (13% missing). The other variables did not have any missing data. 
+
+Make a histogram of the total number of steps taken each day and Calculate and report the mean and median total number of steps taken per day. Do these values differ from the estimates from the first part of the assignment? What is the impact of imputing missing data on the estimates of the total daily number of steps?
+```{r}
+#plot
+ggplot(completeData,aes(date,steps))+geom_col()
+
+#steps per day calc
+totalsteps_updated <- tapply(completeData$steps, completeData$date, FUN = sum)
+steps_day_updated <- as.data.frame(totalsteps_updated)
+head(steps_day_updated)
+steps_day_updated <-rownames_to_column(steps_day_updated,var = "date")
+head(steps_day_updated)
+
+summary(steps_day_updated$totalsteps)
+mean_steps_updated <- round(mean(steps_day_updated$totalsteps), digits = 2)
+mean_steps_updated
+med_steps_updated <- median(steps_day_updated$totalsteps)
+med_steps_updated
+```
+The mean total number of steps taken per day is `r mean_steps_updated` and the median is `r med_steps_updated`. These values are higher than the average and median calculated above where NA values were ignored. 
+
+## Are there differences in activity patterns between weekdays and weekends?
+Panel plot comparing the average number of steps taken per 5-minute interval across weekdays and weekends
+
+```{r}
+library(timeDate)
+data$day <- isWeekday(data$date,wday = 1:5)
+library(car)
+data$day[data$day=="TRUE"]<-"Weekday"
+data$day[data$day=="FALSE"]<-"Weekend"
+
+dfWeekday <- data[which(data$day == "Weekday"),]
+dfWeekdayIntLevel <- aggregate(steps~interval, data = dfWeekday, FUN = function(dfWeekday) c(mean=mean(dfWeekday)))
+dfWeekdayIntLevel$daytype <- "Weekday"
+dfWeekend <- data[which(data$day == "Weekend"),]
+dfWeekendIntLevel <- aggregate(steps~interval, data = dfWeekend, FUN = function(dfWeekend) c(mean=mean(dfWeekend)))
+dfWeekendIntLevel$daytype <- "Weekend"
+
+library(gridExtra)
+plot1 <- ggplot(dfWeekdayIntLevel, aes(x=interval,y=steps))+ geom_line() + ggtitle("Weekdays")
+plot2 <- ggplot(dfWeekendIntLevel, aes(x=interval,y=steps),main="Weekends")+ geom_line() + ggtitle("Weekends")
+grid.arrange(plot1, plot2, nrow=2)
+
+```
+
+We can also look at the lines on the same graph to more easily compare. 
+```{r}
+#merge datasets horizontally
+total <- rbind(dfWeekdayIntLevel, dfWeekendIntLevel)
+#plot by day type
+ggplot(total, aes(x=interval,y=steps,group=daytype,colour=daytype))+ geom_line()
+```
+
+This graph shows that people tended to have more steps in the morning on weekdays and more steps in the afternoon/evening on the weekend. Overall, the average number of steps on the weekend was `r mean(dfWeekend$steps,na.rm=TRUE)` and the average number of steps on the weekday was `r mean(dfWeekday$steps,na.rm=TRUE)`.
